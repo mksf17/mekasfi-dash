@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-from datetime import date, timedelta
+from datetime import timedelta
 
 # ==============================================================================
-# CONFIGURAÇÃO DA PÁGINA E ESTILO
+# CONFIGURAÇÃO DA PÁGINA
 # ==============================================================================
 
 st.set_page_config(
@@ -15,438 +14,341 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS Customizado para design profissional
+# ==============================================================================
+# ESTILIZAÇÃO (CSS MODERNIZADO)
+# ==============================================================================
+
 st.markdown("""
 <style>
-    /* Importa fonte Inter */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
     
-    /* Aplica fonte em todo o app */
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* Fundo geral mais suave */
+    .stApp {
+        background-color: #f8fafc;
+        font-family: 'Inter', sans-serif;
     }
     
-    /* Remove padding superior */
+    /* Estilo para Cards (Containeres Brancos) */
+    .dashboard-card {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        margin-bottom: 1rem;
+        border: 1px solid #e2e8f0;
+    }
+    
+    /* Títulos */
+    h1 {
+        color: #1e293b;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+    }
+    
+    h2, h3 {
+        color: #334155;
+        font-weight: 600;
+    }
+    
+    /* Remover padding excessivo do topo */
     .block-container {
         padding-top: 2rem;
-        padding-bottom: 2rem;
+        padding-bottom: 3rem;
     }
     
-    /* Estilo do header */
-    h1 {
-        color: #0066cc;
-        font-weight: 700;
-        font-size: 2.5rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-    
-    h2 {
-        color: #212529;
-        font-weight: 600;
-        font-size: 1.5rem !important;
-        margin-top: 2rem !important;
-        margin-bottom: 1rem !important;
-    }
-    
-    h3 {
-        color: #495057;
-        font-weight: 600;
-        font-size: 1.1rem !important;
-    }
-    
-    /* Estilo das métricas */
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem;
-        font-weight: 700;
-    }
-    
-    [data-testid="stMetricLabel"] {
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #6c757d;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    /* Tabelas */
-    .dataframe {
-        font-size: 0.9rem;
-    }
-    
-    /* Botão sidebar */
+    /* Botões */
     .stButton button {
-        background-color: #0066cc;
+        background-color: #4f46e5; /* Indigo Moderno */
         color: white;
-        font-weight: 600;
-        border-radius: 6px;
-        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        font-weight: 500;
         border: none;
+        transition: all 0.2s;
     }
     
     .stButton button:hover {
-        background-color: #0052a3;
+        background-color: #4338ca;
+        box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);
     }
-    
-    /* Divisor */
-    hr {
-        margin: 2rem 0;
-        border: none;
-        border-top: 2px solid #e9ecef;
+
+    /* Ajuste de métricas */
+    div[data-testid="metric-container"] {
+        background-color: white;
+        padding: 10px;
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# CONSTANTES E CONFIGURAÇÕES
+# CONFIGURAÇÕES VISUAIS
 # ==============================================================================
 
-# Cores padronizadas (baseadas no PDF original)
 COLORS = {
-    'mksf': '#0066cc',      # Azul Mekasfi
-    'ibov': '#dc3545',      # Vermelho para Ibovespa
-    'positive': '#28a745',  # Verde para valores positivos
-    'negative': '#dc3545',  # Vermelho para valores negativos
-    'grid': '#e9ecef',      # Cinza claro para grid
-    'background': '#ffffff' # Fundo branco
+    'primary': '#4f46e5',   # Indigo (Mekasfi)
+    'secondary': '#94a3b8', # Slate (Ibov/Neutro)
+    'success': '#10b981',   # Emerald
+    'danger': '#ef4444',    # Rose
+    'text': '#1e293b',
+    'grid': '#f1f5f9'
 }
 
-# Configuração base dos gráficos
-CHART_CONFIG = {
-    'font_family': 'Inter, sans-serif',
-    'font_size': 12,
-    'title_size': 16,
-    'height': 400,
-    'margin': dict(l=60, r=40, t=60, b=60),
-    'plot_bgcolor': COLORS['background'],
-    'paper_bgcolor': COLORS['background'],
+CHART_THEME = {
+    'plot_bgcolor': 'white',
+    'paper_bgcolor': 'white',
+    'font': {'family': 'Inter, sans-serif', 'color': COLORS['text']},
 }
 
 # ==============================================================================
-# FUNÇÕES DE CARREGAMENTO E PROCESSAMENTO
+# PROCESSAMENTO DE DADOS
 # ==============================================================================
 
 @st.cache_data
 def load_data():
-    """Carrega dados do Excel com cache"""
     try:
         with pd.ExcelFile("PyDATA.xlsx") as xls:
             df = pd.read_excel(xls, 'MKSF', index_col=0)
             return df
     except FileNotFoundError:
-        st.error("⚠️ Arquivo 'PyDATA.xlsx' não encontrado. Certifique-se de que está no mesmo diretório.")
+        st.error("⚠️ Arquivo 'PyDATA.xlsx' não encontrado.")
         st.stop()
     except Exception as e:
         st.error(f"⚠️ Erro ao carregar arquivo: {str(e)}")
         st.stop()
 
 def process_data(df):
-    """Processa e calcula todas as métricas necessárias"""
     df = df.copy()
     
-    # Cálculos básicos
+    # Cálculos
     df['CotaMKSF'] = df['PL_MKSF'] / df['Qtd_Cotas']
     df['IBOVdaily'] = df['IBOV'].pct_change()
     df['MKSFdaily'] = df['CotaMKSF'].pct_change()
     
-    # Retornos acumulados
     df['IBOVacum'] = (1 + df['IBOVdaily']).cumprod() - 1
     df['MKSFacum'] = (1 + df['MKSFdaily']).cumprod() - 1
     df['Spread'] = df['MKSFacum'] - df['IBOVacum']
     
     return df
 
+# Função para estilizar DataFrames (Cores Condicionais)
+def color_surrenders(val):
+    """Retorna cor verde ou vermelha para CSS baseado no valor numérico"""
+    if pd.isna(val):
+        return ''
+    color = COLORS['success'] if val >= 0 else COLORS['danger']
+    return f'color: {color}; font-weight: 600;'
+
 # ==============================================================================
-# FUNÇÕES DE VISUALIZAÇÃO
+# GRÁFICOS
 # ==============================================================================
 
-def create_cumulative_return_chart(df):
-    """Cria gráfico de retorno acumulado"""
+def plot_cumulative(df):
     fig = go.Figure()
     
-    # Linha IBOV
+    # IBOV (Fundo/Referência)
     fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['IBOVacum'] * 100,
-        mode='lines',
-        name='IBOV',
-        line=dict(color=COLORS['ibov'], width=2),
-        hovertemplate='%{x|%d/%m/%Y}<br>IBOV: %{y:.2f}%<extra></extra>'
+        x=df.index, y=df['IBOVacum'],
+        mode='lines', name='IBOV',
+        line=dict(color=COLORS['secondary'], width=1.5),
+        hovertemplate='%{x|%d/%m/%Y}<br>IBOV: %{y:.2%}<extra></extra>'
     ))
     
-    # Linha MKSF
+    # MKSF (Destaque)
     fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['MKSFacum'] * 100,
-        mode='lines',
-        name='MKSF',
-        line=dict(color=COLORS['mksf'], width=2),
-        hovertemplate='%{x|%d/%m/%Y}<br>MKSF: %{y:.2f}%<extra></extra>'
+        x=df.index, y=df['MKSFacum'],
+        mode='lines', name='MKSF',
+        line=dict(color=COLORS['primary'], width=2.5),
+        hovertemplate='%{x|%d/%m/%Y}<br>MKSF: %{y:.2%}<extra></extra>'
     ))
     
     fig.update_layout(
-        title={
-            'text': 'Retorno Acumulado',
-            'font': {'size': CHART_CONFIG['title_size'], 'family': CHART_CONFIG['font_family']},
-            'x': 0.5,
-            'xanchor': 'center'
-        },
-        xaxis_title='',
-        yaxis_title='Retorno (%)',
+        title='<b>Retorno Acumulado</b>',
+        yaxis_tickformat='.0%',
         hovermode='x unified',
-        height=CHART_CONFIG['height'],
-        margin=CHART_CONFIG['margin'],
-        plot_bgcolor=CHART_CONFIG['plot_bgcolor'],
-        paper_bgcolor=CHART_CONFIG['paper_bgcolor'],
-        font=dict(family=CHART_CONFIG['font_family'], size=CHART_CONFIG['font_size']),
-        xaxis=dict(
-            showgrid=True,
-            gridcolor=COLORS['grid'],
-            showline=True,
-            linecolor='#dee2e6',
-            linewidth=1
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor=COLORS['grid'],
-            showline=True,
-            linecolor='#dee2e6',
-            linewidth=1,
-            ticksuffix='%'
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        )
+        height=400,
+        margin=dict(l=20, r=20, t=50, b=20),
+        legend=dict(orientation="h", y=1, x=0, xanchor="left", yanchor="bottom"),
+        **CHART_THEME
     )
+    fig.update_xaxes(showgrid=False, linecolor='#cbd5e1')
+    fig.update_yaxes(showgrid=True, gridcolor=COLORS['grid'], zeroline=True, zerolinecolor='#cbd5e1')
     
     return fig
 
-def create_spread_chart(df):
-    """Cria gráfico de spread"""
+def plot_spread(df):
     fig = go.Figure()
     
     fig.add_trace(go.Scatter(
-        x=df.index,
-        y=df['Spread'] * 100,
-        mode='lines',
-        name='Spread',
-        line=dict(color=COLORS['mksf'], width=2),
+        x=df.index, y=df['Spread'],
+        mode='lines', name='Spread',
+        line=dict(color=COLORS['primary'], width=2),
         fill='tozeroy',
-        fillcolor=f'rgba(0, 102, 204, 0.1)',
-        hovertemplate='%{x|%d/%m/%Y}<br>Spread: %{y:.2f}%<extra></extra>'
+        fillcolor='rgba(79, 70, 229, 0.1)', # Transparência do Indigo
+        hovertemplate='Spread: %{y:.2%}<extra></extra>'
     ))
     
-    # Linha zero
-    fig.add_hline(y=0, line_dash="dash", line_color="#6c757d", line_width=1)
+    fig.add_hline(y=0, line_dash="dash", line_color=COLORS['secondary'], opacity=0.5)
     
     fig.update_layout(
-        title={
-            'text': 'Spread (MKSF vs IBOV)',
-            'font': {'size': CHART_CONFIG['title_size'], 'family': CHART_CONFIG['font_family']},
-            'x': 0.5,
-            'xanchor': 'center'
-        },
-        xaxis_title='',
-        yaxis_title='Spread (%)',
+        title='<b>Alpha (Spread vs IBOV)</b>',
+        yaxis_tickformat='.1%',
         hovermode='x unified',
-        height=CHART_CONFIG['height'],
-        margin=CHART_CONFIG['margin'],
-        plot_bgcolor=CHART_CONFIG['plot_bgcolor'],
-        paper_bgcolor=CHART_CONFIG['paper_bgcolor'],
-        font=dict(family=CHART_CONFIG['font_family'], size=CHART_CONFIG['font_size']),
-        xaxis=dict(
-            showgrid=True,
-            gridcolor=COLORS['grid'],
-            showline=True,
-            linecolor='#dee2e6',
-            linewidth=1
-        ),
-        yaxis=dict(
-            showgrid=True,
-            gridcolor=COLORS['grid'],
-            showline=True,
-            linecolor='#dee2e6',
-            linewidth=1,
-            ticksuffix='%'
-        ),
-        showlegend=False
+        height=400,
+        margin=dict(l=20, r=20, t=50, b=20),
+        showlegend=False,
+        **CHART_THEME
     )
+    fig.update_xaxes(showgrid=False, linecolor='#cbd5e1')
+    fig.update_yaxes(showgrid=True, gridcolor=COLORS['grid'])
     
     return fig
 
-def format_percent_color(value):
-    """Formata percentual com cor"""
-    if pd.isna(value):
-        return ""
-    color = COLORS['positive'] if value >= 0 else COLORS['negative']
-    return f'<span style="color: {color}; font-weight: 500;">{value:.2f}%</span>'
-
 # ==============================================================================
-# APLICAÇÃO PRINCIPAL
+# LAYOUT PRINCIPAL
 # ==============================================================================
 
 def main():
-    # Header
-    st.title("📊 Dashboard Mekasfi")
-    st.markdown("**Análise de Retorno Acumulado e Spread**")
-    
-    # Sidebar com botão de refresh
+    # --- Sidebar ---
     with st.sidebar:
-        st.markdown("### ⚙️ Controles")
+        st.header("Mekasfi Asset")
+        st.caption("Controles do Dashboard")
+        
         if st.button("🔄 Atualizar Dados", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
-        
-        st.markdown("---")
-        st.markdown("### ℹ️ Informações")
-        st.markdown("""
-        **Última atualização:**  
-        Confira a data no dashboard
-        
-        **Fonte de dados:**  
-        PyDATA.xlsx (Aba MKSF)
-        """)
-    
-    # Carrega e processa dados
+            
+        st.divider()
+        st.info("Dados extraídos de PyDATA.xlsx (Aba MKSF)")
+
+    # --- Header ---
     df_mksf = load_data()
     df_mksf = process_data(df_mksf)
-    
-    # Data da última atualização
     ultima_data = df_mksf.index.max()
-    st.markdown(f"*Última atualização: {ultima_data.strftime('%d/%m/%Y')}*")
+    
+    col_head1, col_head2 = st.columns([3, 1])
+    with col_head1:
+        st.title("Dashboard de Performance")
+        st.markdown(f"Data base: **{ultima_data.strftime('%d/%m/%Y')}**")
     
     st.markdown("---")
-    
-    # ==============================================================================
-    # GRÁFICOS PRINCIPAIS
-    # ==============================================================================
-    
-    col1, col2 = st.columns([3, 2])
-    
-    with col1:
-        fig_retorno = create_cumulative_return_chart(df_mksf)
-        st.plotly_chart(fig_retorno, use_container_width=True)
-    
-    with col2:
-        fig_spread = create_spread_chart(df_mksf)
-        st.plotly_chart(fig_spread, use_container_width=True)
-    
-    st.markdown("---")
-    
-    # ==============================================================================
-    # SEÇÃO SEMANAL
-    # ==============================================================================
-    
-    numero_semana = ultima_data.isocalendar()[1]
-    st.markdown(f"## Semana {numero_semana}")
-    
-    # Pega última data da semana anterior
-    dia_semana_anterior = ultima_data - timedelta(weeks=1)
-    ultima_data_semana_anterior = df_mksf.index[
-        df_mksf.index.isocalendar().week == dia_semana_anterior.isocalendar()[1]
-    ].max()
-    
-    # Cria lista dos dias da semana (segunda a sexta)
-    data_semana = []
-    start_of_week = ultima_data - timedelta(days=ultima_data.weekday())
-    for i in range(5):
-        data_semana.append(start_of_week + timedelta(days=i))
-    
-    # Prepara dados da tabela semanal
-    dados_semana = {
-        'Dia': [d.strftime('%d.%m - %A') for d in data_semana],
-        'Mekasfi': [''] * 5,
-        'Ibovespa': [''] * 5
-    }
-    
-    for i, data in enumerate(data_semana):
-        if data in df_mksf.index:
-            dados_semana['Mekasfi'][i] = f"{df_mksf.loc[data, 'MKSFdaily']:.2%}"
-            dados_semana['Ibovespa'][i] = f"{df_mksf.loc[data, 'IBOVdaily']:.2%}"
-    
-    df_tabela_semanal = pd.DataFrame(dados_semana)
-    
-    # Calcula variação semanal
-    if ultima_data_semana_anterior and ultima_data:
-        var_mksf_semanal = (df_mksf.loc[ultima_data, 'CotaMKSF'] / 
-                           df_mksf.loc[ultima_data_semana_anterior, 'CotaMKSF']) - 1
-        var_ibov_semanal = (df_mksf.loc[ultima_data, 'IBOV'] / 
-                           df_mksf.loc[ultima_data_semana_anterior, 'IBOV']) - 1
-        
-        df_tabela_semanal.loc[len(df_tabela_semanal)] = [
-            f"**Semana {numero_semana}**",
-            f"{var_mksf_semanal:.2%}",
-            f"{var_ibov_semanal:.2%}"
-        ]
-    
-    df_tabela_semanal = df_tabela_semanal.set_index('Dia')
-    
-    # ==============================================================================
-    # TABELAS LADO A LADO
-    # ==============================================================================
-    
-    col1, col2 = st.columns([2, 3])
-    
-    with col1:
-        st.markdown("### 📅 Performance Semanal")
-        st.dataframe(df_tabela_semanal, use_container_width=True)
-    
-    with col2:
-        st.markdown("### 📈 Variações Acumuladas")
-        
-        # Calcula variações
-        ano_atual = ultima_data.year
-        
-        # Mês
-        primeira_data_mes = df_mksf.index[
-            (df_mksf.index.year == ultima_data.year) &
-            (df_mksf.index.month == ultima_data.month)
-        ].min()
-        var_mksf_mes = (df_mksf.loc[ultima_data, 'CotaMKSF'] / 
-                       df_mksf.loc[primeira_data_mes, 'CotaMKSF']) - 1
-        var_ibov_mes = (df_mksf.loc[ultima_data, 'IBOV'] / 
-                       df_mksf.loc[primeira_data_mes, 'IBOV']) - 1
-        
-        # Ano
-        primeira_data_ano = df_mksf.index[df_mksf.index.year == ano_atual].min()
-        var_mksf_ano = (df_mksf.loc[ultima_data, 'CotaMKSF'] / 
-                       df_mksf.loc[primeira_data_ano, 'CotaMKSF']) - 1
-        var_ibov_ano = (df_mksf.loc[ultima_data, 'IBOV'] / 
-                       df_mksf.loc[primeira_data_ano, 'IBOV']) - 1
-        
-        # 12 meses
-        data_12meses_atras = ultima_data - timedelta(days=365)
-        primeira_data_12m = df_mksf.loc[data_12meses_atras:].index.min()
-        var_mksf_12m = (df_mksf.loc[ultima_data, 'CotaMKSF'] / 
-                       df_mksf.loc[primeira_data_12m, 'CotaMKSF']) - 1
-        var_ibov_12m = (df_mksf.loc[ultima_data, 'IBOV'] / 
-                       df_mksf.loc[primeira_data_12m, 'IBOV']) - 1
-        
-        # Desde o início
-        inicio_df = df_mksf.index.min()
-        var_mksf_inicio = (df_mksf.loc[ultima_data, 'CotaMKSF'] / 
-                          df_mksf.loc[inicio_df, 'CotaMKSF']) - 1
-        var_ibov_inicio = (df_mksf.loc[ultima_data, 'IBOV'] / 
-                          df_mksf.loc[inicio_df, 'IBOV']) - 1
-        
-        # Cria DataFrame resumo
-        dados_resumo = {
-            'Período': ['Mekasfi', 'Ibovespa'],
-            'Mês': [f"{var_mksf_mes:.2%}", f"{var_ibov_mes:.2%}"],
-            'Ano': [f"{var_mksf_ano:.2%}", f"{var_ibov_ano:.2%}"],
-            '12 meses': [f"{var_mksf_12m:.2%}", f"{var_ibov_12m:.2%}"],
-            'Desde o início': [f"{var_mksf_inicio:.2%}", f"{var_ibov_inicio:.2%}"]
-        }
-        df_resumo = pd.DataFrame(dados_resumo).set_index('Período')
-        
-        st.dataframe(df_resumo, use_container_width=True)
 
-# ==============================================================================
-# EXECUÇÃO
-# ==============================================================================
+    # --- Container Gráficos (Estilo Card) ---
+    st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+    col_chart1, col_chart2 = st.columns([1.5, 1])
+    
+    with col_chart1:
+        st.plotly_chart(plot_cumulative(df_mksf), use_container_width=True)
+    
+    with col_chart2:
+        st.plotly_chart(plot_spread(df_mksf), use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- Cálculos para Tabelas ---
+    
+    # 1. Tabela Semanal
+    numero_semana = ultima_data.isocalendar()[1]
+    
+    # Lógica de datas da semana
+    start_of_week = ultima_data - timedelta(days=ultima_data.weekday())
+    data_semana = [start_of_week + timedelta(days=i) for i in range(5)]
+    
+    # Preparar DataFrame Semanal (Valores Numéricos)
+    dados_semana_list = []
+    
+    for data in data_semana:
+        row = {'Dia': data.strftime('%d.%m - %A')}
+        if data in df_mksf.index:
+            row['Mekasfi'] = df_mksf.loc[data, 'MKSFdaily']
+            row['Ibovespa'] = df_mksf.loc[data, 'IBOVdaily']
+        else:
+            row['Mekasfi'] = None
+            row['Ibovespa'] = None
+        dados_semana_list.append(row)
+        
+    df_semana = pd.DataFrame(dados_semana_list)
+    
+    # Adicionar linha de total semanal
+    dia_semana_anterior = ultima_data - timedelta(weeks=1)
+    # Tenta achar a última data disponível da semana anterior
+    mask_semana_anterior = df_mksf.index.isocalendar().week == dia_semana_anterior.isocalendar()[1]
+    if any(mask_semana_anterior):
+        dt_base_semana = df_mksf.index[mask_semana_anterior].max()
+        
+        var_mksf_sem = (df_mksf.loc[ultima_data, 'CotaMKSF'] / df_mksf.loc[dt_base_semana, 'CotaMKSF']) - 1
+        var_ibov_sem = (df_mksf.loc[ultima_data, 'IBOV'] / df_mksf.loc[dt_base_semana, 'IBOV']) - 1
+        
+        # Adiciona como uma nova linha
+        nova_linha = pd.DataFrame([{
+            'Dia': f'Total Semana {numero_semana}',
+            'Mekasfi': var_mksf_sem,
+            'Ibovespa': var_ibov_sem
+        }])
+        df_semana = pd.concat([df_semana, nova_linha], ignore_index=True)
+
+    df_semana = df_semana.set_index('Dia')
+
+    # 2. Tabela Resumo (Variações Acumuladas)
+    def calc_return(dt_start, dt_end, col):
+        try:
+            return (df_mksf.loc[dt_end, col] / df_mksf.loc[dt_start, col]) - 1
+        except:
+            return None
+
+    # Datas de referência
+    dt_inicio_mes = df_mksf.index[(df_mksf.index.year == ultima_data.year) & (df_mksf.index.month == ultima_data.month)].min()
+    dt_inicio_ano = df_mksf.index[df_mksf.index.year == ultima_data.year].min()
+    dt_12m = df_mksf.loc[:ultima_data - timedelta(days=365)].index.max() # Aproximação segura
+    dt_inicio = df_mksf.index.min()
+
+    # Montagem dos dados
+    resumo_data = {
+        'Período': ['Mês Atual', 'Ano (YTD)', '12 Meses', 'Início'],
+        'Mekasfi': [
+            calc_return(dt_inicio_mes, ultima_data, 'CotaMKSF'),
+            calc_return(dt_inicio_ano, ultima_data, 'CotaMKSF'),
+            calc_return(dt_12m, ultima_data, 'CotaMKSF') if pd.notna(dt_12m) else None,
+            calc_return(dt_inicio, ultima_data, 'CotaMKSF')
+        ],
+        'Ibovespa': [
+            calc_return(dt_inicio_mes, ultima_data, 'IBOV'),
+            calc_return(dt_inicio_ano, ultima_data, 'IBOV'),
+            calc_return(dt_12m, ultima_data, 'IBOV') if pd.notna(dt_12m) else None,
+            calc_return(dt_inicio, ultima_data, 'IBOV')
+        ]
+    }
+    df_resumo = pd.DataFrame(resumo_data).set_index('Período')
+
+    # --- Renderização das Tabelas ---
+    
+    col_tab1, col_tab2 = st.columns([1, 1])
+    
+    with col_tab1:
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+        st.subheader("📅 Performance Semanal")
+        
+        # Estilização com Pandas Styler (O jeito moderno de colorir tabelas)
+        st.dataframe(
+            df_semana.style
+            .format("{:.2%}", subset=['Mekasfi', 'Ibovespa'])
+            .applymap(color_surrenders, subset=['Mekasfi', 'Ibovespa']),
+            use_container_width=True,
+            height=250
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    with col_tab2:
+        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
+        st.subheader("📈 Variações Acumuladas")
+        
+        st.dataframe(
+            df_resumo.style
+            .format("{:.2%}", subset=['Mekasfi', 'Ibovespa'])
+            .applymap(color_surrenders, subset=['Mekasfi', 'Ibovespa']),
+            use_container_width=True,
+            height=250
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
